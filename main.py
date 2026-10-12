@@ -18,6 +18,7 @@ from collections import defaultdict
 import logging
 import numpy as np
 from utils.eval_other_utils import metrics_summarization
+from utils.eval_data_utils import load_eval_data
 
 # Configure logging
 logging.basicConfig(
@@ -51,6 +52,9 @@ def parse_command_line_arguments():
                        help='Model name to use instead of the agent config\'s model')
     parser.add_argument('--output_dir', type=str, default=None,
                        help='Write the results file directly into this directory')
+    parser.add_argument('--answers_file', type=str, default=None,
+                       help='Also write the answers as JSON lines, one per sample: its id and its qa list, '
+                            'each question with its prediction and the score the paper reports for it')
     return parser.parse_args()
 
 
@@ -96,6 +100,44 @@ def save_results_to_file(output_path, agent_config, dataset_config, results, met
     with open(output_path, "w") as file:
         json.dump(output_data, file, indent=4)
     logger.info(f"Results saved at {output_path}")
+
+    # The answers per sample too, when --answers_file asks for them
+    if ANSWERS:
+        save_answers_file(results=results, **ANSWERS)
+
+
+# Set by main() with --answers_file: where the answers go, the samples and their query-answer pairs
+ANSWERS = None
+
+
+def paper_score(sub_dataset, record):
+    """The metric the paper reports for a sub-dataset (README, "Clarification on Evaluation Metrics")."""
+    if 'recsys' in sub_dataset:
+        return record.get('recsys_recall@5')
+    if 'icl' in sub_dataset or 'detective' in sub_dataset:
+        return record.get('exact_match')
+    if any(name in sub_dataset for name in ['eventqa', 'ruler', 'factconsolidation']):
+        return record.get('substring_exact_match')
+    return None  # scored by an LLM judge (llm_based_eval/)
+
+
+def save_answers_file(path, samples, all_query_answer_pairs, sub_dataset, results):
+    """Write the answers so far as JSON lines, one per sample, in the shape of the data file's own qa list."""
+    by_query = {record["query_id"]: record for record in results if "query_id" in record}
+    query_index = 0
+    with open(path, "w", encoding="utf-8") as file:
+        for sample, query_answer_pairs in zip(samples, all_query_answer_pairs):
+            qa = []
+            for i, (query, answer, *_) in enumerate(query_answer_pairs):
+                questions = sample.get("qa") or []
+                pair = {"question": questions[i]["question"] if i < len(questions) else query, "answer": answer}
+                record = by_query.get(query_index + i)
+                if record is not None:
+                    pair.update({"prediction": record.get("output"), "score": paper_score(sub_dataset, record),
+                                 "input_len": record.get("input_len"), "output_len": record.get("output_len")})
+                qa.append(pair)
+            query_index += len(query_answer_pairs)
+            file.write(json.dumps({"id": sample.get("id"), "source": sample.get("source"), "qa": qa}, ensure_ascii=False) + "\n")
 
 
 def process_single_query(agent, query, answer, dataset_config, metrics, results, 
@@ -189,7 +231,13 @@ def main():
     metrics, results, last_processed_context_id, last_processed_query_id = load_existing_results(
         output_path, dataset_config, all_query_answer_pairs
     )
-    
+
+    # With --answers_file, the samples the answers are written against: the same ones, in the same order
+    global ANSWERS
+    if args.answers_file:
+        ANSWERS = {"path": args.answers_file, "samples": list(load_eval_data(dataset_config)["data"]),
+                   "all_query_answer_pairs": all_query_answer_pairs, "sub_dataset": dataset_config['sub_dataset']}
+
     # Start evaluation loop - process each context and its associated queries
     query_index = 0  # Tracks total queries processed across all contexts
     total_contexts = len(all_context_chunks)
