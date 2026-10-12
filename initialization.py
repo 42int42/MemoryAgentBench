@@ -30,13 +30,21 @@ def setup_configs_and_directories(command_line_args):
     
     # Apply ablation study parameters if specified
     _apply_ablation_parameters(command_line_args, agent_config, dataset_config)
-    
+
+    # Apply the optional overrides (--data_file, --model)
+    _apply_run_overrides(command_line_args, agent_config, dataset_config)
+
     # Clean up previous agent data if necessary
     _cleanup_agent_directories(agent_config)
-    
+
     # Create output directory and file path
     output_file_path = _create_output_path(agent_config, dataset_config)
-    
+
+    # With --output_dir, the results file goes directly into that directory
+    if getattr(command_line_args, 'output_dir', None):
+        os.makedirs(command_line_args.output_dir, exist_ok=True)
+        output_file_path = os.path.join(command_line_args.output_dir, os.path.basename(output_file_path))
+
     return agent_config, dataset_config, output_file_path
 
 
@@ -192,6 +200,17 @@ def _apply_ablation_parameters(command_line_args, agent_config, dataset_config):
     if command_line_args.max_test_queries_ablation > 0:
         dataset_config['max_test_queries'] = command_line_args.max_test_queries_ablation
         print(f"\n\nUsing max_test_queries: {dataset_config['max_test_queries']}\n\n")
+
+
+def _apply_run_overrides(command_line_args, agent_config, dataset_config):
+    """Apply the optional command-line overrides; unset, the configs are used as they are."""
+    if getattr(command_line_args, 'data_file', None):
+        dataset_config['data_file'] = command_line_args.data_file
+        print(f"\n\nUsing data file: {dataset_config['data_file']}\n\n")
+
+    if getattr(command_line_args, 'model', None):
+        agent_config['model'] = command_line_args.model
+        print(f"\n\nUsing model: {agent_config['model']}\n\n")
 
 
 def _apply_chunk_size_ablation(command_line_args, agent_config, dataset_config):

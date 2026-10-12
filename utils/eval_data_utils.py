@@ -81,6 +81,40 @@ def _load_and_filter_dataset(dataset_name, split_name, source_filter, max_sample
         raise ValueError(f"Split {split_name} not found in dataset.")
 
 
+def load_data_file(data_file, sub_dataset_source, max_test_samples=None):
+    """
+    Load samples from a local JSON (a list) or JSONL file, each row as the Hugging Face
+    splits hold it, filtered and processed as load_data_huggingface does.
+
+    Args:
+        data_file: Path to the JSON or JSONL file
+        sub_dataset_source: The sub_dataset name used to filter by source field
+        max_test_samples: Maximum number of test samples to load
+
+    Returns:
+        Dictionary with processed data
+    """
+    print(f"Loading {sub_dataset_source} from local file: {data_file}")
+
+    with open(data_file, 'r', encoding='utf-8') as f:
+        if data_file.endswith('.jsonl'):
+            rows = [json.loads(line) for line in f if line.strip()]
+        else:
+            rows = json.load(f)
+    print(f"Loaded {len(rows)} samples from {data_file}")
+
+    # Filter by source to match the sub_dataset exactly, as for Hugging Face
+    filtered_rows = [row for row in rows if (row.get("metadata") or {}).get("source", "") == sub_dataset_source]
+    print(f"Filtered to {len(filtered_rows)} samples matching source '{sub_dataset_source}' "
+          f"(from {len(rows)} total)")
+
+    if max_test_samples is not None and len(filtered_rows) > max_test_samples:
+        filtered_rows = filtered_rows[:max_test_samples]
+        print(f"Subsampled to {max_test_samples} samples")
+
+    return {"data": [_process_single_sample_qa_lists(row) for row in filtered_rows]}
+
+
 def _process_qa_list_fields(dataset):
     """
     Process the dataset to ensure Q&A pairs and related fields are properly formatted as lists.
@@ -318,6 +352,10 @@ def load_eval_data(dataset_config):
         'Long_Range_Understanding', 'Conflict_Resolution'
     }
     
+    # A local file of samples given with --data_file
+    if dataset_config.get('data_file'):
+        return load_data_file(dataset_config['data_file'], sub_dataset_name, max_test_samples)
+
     # Check if it's a HuggingFace dataset
     if main_dataset_name in supported_hf_datasets:
         return load_data_huggingface(main_dataset_name, sub_dataset_name, max_test_samples, random_seed)

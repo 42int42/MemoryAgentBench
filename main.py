@@ -44,6 +44,13 @@ def parse_command_line_arguments():
                        help='Limit maximum test queries for ablation studies (0 = no limit)')
     parser.add_argument('--force', action='store_true', default=False,
                        help='Force re-run even if results already exist')
+    # Optional overrides for running from a harness: unset, the configs decide as before
+    parser.add_argument('--data_file', type=str, default=None,
+                       help='Read the samples from this JSON or JSONL file (rows as the Hugging Face splits hold them) instead of Hugging Face')
+    parser.add_argument('--model', type=str, default=None,
+                       help='Model name to use instead of the agent config\'s model')
+    parser.add_argument('--output_dir', type=str, default=None,
+                       help='Write the results file directly into this directory')
     return parser.parse_args()
 
 
