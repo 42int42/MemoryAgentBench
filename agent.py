@@ -14,6 +14,10 @@ from langchain_core.documents import Document
 from transformers import BitsAndBytesConfig
 from transformers import AutoTokenizer, AutoModelForCausalLM, LlamaConfig
 
+# Sent with every answer call: the vLLM server's DeepSeek V4 Flash otherwise
+# spends a short max_tokens on reasoning and returns no content at all.
+NO_THINKING = {"chat_template_kwargs": {"thinking": False}}
+
 
 class AgentWrapper:
     """
@@ -326,7 +330,8 @@ class AgentWrapper:
                 model=self.model,
                 messages=formatted_message,
                 temperature=self.temperature,
-                max_tokens=self.max_tokens
+                max_tokens=self.max_tokens,
+                extra_body=NO_THINKING
             )
             return self._format_openai_response(response, start_time)
             
@@ -606,7 +611,8 @@ class AgentWrapper:
                 model=self.model,
                 messages=llm_messages,
                 temperature=self.temperature,
-                max_tokens=self.max_tokens
+                max_tokens=self.max_tokens,
+                extra_body=NO_THINKING
             )
             
             memory_retrieval_length = len(self.tokenizer.encode(memories_str, disallowed_special=()))
@@ -899,7 +905,8 @@ class AgentWrapper:
             model=self.model,
             messages=format_message,
             temperature=self.temperature,
-            max_tokens=self.max_tokens if "gpt-4" in self.model else None
+            max_tokens=self.max_tokens if "gpt-4" in self.model else None,
+            extra_body=NO_THINKING
         )
         
         query_time_len = time.time() - start_time - memory_construction_time
