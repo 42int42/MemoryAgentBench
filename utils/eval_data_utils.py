@@ -96,11 +96,13 @@ def load_data_file(data_file, sub_dataset_source, max_test_samples=None):
     """
     print(f"Loading {sub_dataset_source} from local file: {data_file}")
 
+    # A JSON list starts with '[', whatever the file is called; anything else is read as JSON lines
     with open(data_file, 'r', encoding='utf-8') as f:
-        if data_file.endswith('.jsonl'):
-            rows = [json.loads(line) for line in f if line.strip()]
-        else:
-            rows = json.load(f)
+        text = f.read()
+    if text.lstrip().startswith('['):
+        rows = json.loads(text)
+    else:
+        rows = [json.loads(line) for line in text.splitlines() if line.strip()]
     print(f"Loaded {len(rows)} samples from {data_file}")
 
     # Filter by source to match the sub_dataset exactly, as for Hugging Face
